@@ -87,6 +87,25 @@
   .hint{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
   footer{text-align:center;color:#fff;opacity:.85;font-size:12px;padding:6px 0 18px}
   #confetti{position:fixed;inset:0;pointer-events:none;z-index:9999}
+  /* 倒计时 */
+  .countdown-overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9998;
+    background:radial-gradient(circle at center,rgba(37,117,252,.96),rgba(106,17,203,.98));color:#fff}
+  .countdown-num{font-size:34vmin;font-weight:900;line-height:1;text-shadow:0 8px 40px rgba(0,0,0,.35);animation:cdpop .95s ease}
+  @keyframes cdpop{0%{transform:scale(.4);opacity:0}35%{transform:scale(1.12);opacity:1}100%{transform:scale(1);opacity:1}}
+  .cd-input{width:64px;padding:4px 8px;font-size:14px}
+  /* 大屏投影 */
+  .bigscreen .tabs{display:none}
+  .bigscreen header.top p{display:none}
+  .bigscreen .cfg-col{display:none}
+  .bigscreen .history{display:none}
+  .bigscreen .card{border-radius:0;box-shadow:none;min-height:100vh;padding:5vh 5vw;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .bigscreen .wheel-stage{width:min(80vmin,90vw)}
+  .bigscreen #wheelResult{font-size:6vmin;margin-top:2vh}
+  .bigscreen .big-number{font-size:20vmin;line-height:1}
+  .bigscreen .winner{font-size:10vmin}
+  .bigscreen .winner-pill{font-size:4vmin;padding:2vh 4vw}
+  .bigscreen .num-pill{font-size:4vmin;padding:2vh 3vw}
+  .bs-tip{position:fixed;bottom:14px;right:18px;color:#fff;opacity:.8;font-size:13px;z-index:9998}
 </style>
 </head>
 <body>
@@ -95,6 +114,7 @@
   <header class="top">
     <h1>🎉 幸运抽奖</h1>
     <p>单文件 · 离线可用 · 双击即开 —— 轮盘 / 数字 / 名单抽奖</p>
+    <button class="btn ghost" id="bigScreenBtn" style="margin-top:10px">⛶ 大屏投影</button>
   </header>
 
   <div class="tabs">
@@ -116,9 +136,10 @@
         <div class="actions">
           <button class="btn" id="spinBtn">开始抽奖</button>
           <button class="btn ghost" id="wheelReset">重置轮盘</button>
+          <span class="toggle">倒计时<input type="number" id="wheelCountdown" class="cd-input" value="0" min="0"></span>
         </div>
       </div>
-      <div class="col">
+      <div class="col cfg-col">
         <label>奖项设置（名称 + 权重，权重越大中奖概率越高）</label>
         <div class="items-list" id="wheelItems"></div>
         <div class="actions">
@@ -133,13 +154,14 @@
     <div class="history">
       <h3>中奖记录</h3>
       <div class="chips" id="wheelHistory"></div>
+      <div class="actions"><button class="btn ghost small" id="wheelExport">⬇ 导出 Excel/CSV</button></div>
     </div>
   </section>
 
   <!-- 数字抽奖 -->
   <section id="tab-number" class="card hidden">
     <div class="row">
-      <div class="col">
+      <div class="col cfg-col">
         <label>最小值</label>
         <input type="number" id="numMin" value="1">
         <label>最大值</label>
@@ -155,6 +177,7 @@
         <div class="actions">
           <button class="btn" id="numDraw">开始抽取</button>
           <button class="btn ghost" id="numReset">清空记录</button>
+          <span class="toggle">倒计时<input type="number" id="numCountdown" class="cd-input" value="0" min="0"></span>
         </div>
       </div>
       <div class="col" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
@@ -165,13 +188,14 @@
     <div class="history">
       <h3>抽取记录</h3>
       <div class="chips" id="numHistory"></div>
+      <div class="actions"><button class="btn ghost small" id="numExport">⬇ 导出 Excel/CSV</button></div>
     </div>
   </section>
 
   <!-- 名单抽奖 -->
   <section id="tab-name" class="card hidden">
     <div class="row">
-      <div class="col">
+      <div class="col cfg-col">
         <label>参与名单（每行一个，或用逗号 / 空格分隔）</label>
         <textarea id="nameList" placeholder="张三&#10;李四&#10;王五&#10;赵六"></textarea>
         <label>抽取人数</label>
@@ -182,6 +206,7 @@
         <div class="actions">
           <button class="btn" id="nameDraw">开始抽取</button>
           <button class="btn ghost" id="nameReset">重置名单</button>
+          <span class="toggle">倒计时<input type="number" id="nameCountdown" class="cd-input" value="0" min="0"></span>
         </div>
       </div>
       <div class="col" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
@@ -192,10 +217,14 @@
     <div class="history">
       <h3>中奖记录</h3>
       <div class="chips" id="nameHistory"></div>
+      <div class="actions"><button class="btn ghost small" id="nameExport">⬇ 导出 Excel/CSV</button></div>
     </div>
   </section>
 
-  <footer>幸运抽奖 · 数据仅保存在本地浏览器，刷新不丢失 · 可随身携带</footer>
+  <footer>
+    幸运抽奖 · 数据仅保存在本地浏览器，刷新不丢失 · 可随身携带
+    <div class="actions" style="justify-content:center;margin-top:8px"><button class="btn ghost small" id="exportAll">⬇ 导出全部记录</button></div>
+  </footer>
 </div>
 
 <script>
@@ -258,6 +287,55 @@ $$('.tab').forEach(t=>t.addEventListener('click',()=>{
   $$('.card').forEach(c=>c.classList.add('hidden'));
   $('#tab-'+t.dataset.tab).classList.remove('hidden');
 }));
+
+/* ============ 导出 / 倒计时 / 大屏 ============ */
+function downloadBlob(blob,name){
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
+}
+function exportCSV(rows,header,filename){
+  const esc=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  let csv=header+'\r\n';
+  rows.forEach((r,i)=>{csv+=(i+1)+','+esc(r)+'\r\n';});
+  downloadBlob(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}),filename);
+}
+$('#wheelExport').addEventListener('click',()=>exportCSV(load('wheelHistory',[]),'序号,奖项','轮盘抽奖记录.csv'));
+$('#numExport').addEventListener('click',()=>exportCSV(load('numHistory',[]),'序号,数字','数字抽奖记录.csv'));
+$('#nameExport').addEventListener('click',()=>exportCSV(load('nameHistory',[]),'序号,姓名','名单抽奖记录.csv'));
+$('#exportAll').addEventListener('click',()=>{
+  const all=[];
+  load('wheelHistory',[]).forEach(r=>all.push(['轮盘',r]));
+  load('numHistory',[]).forEach(r=>all.push(['数字',r]));
+  load('nameHistory',[]).forEach(r=>all.push(['名单',r]));
+  const esc=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  let csv='类型,结果\r\n';all.forEach(([t,r])=>csv+=esc(t)+','+esc(r)+'\r\n');
+  downloadBlob(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}),'全部抽奖记录.csv');
+});
+function runCountdown(sec,cb){
+  let ov=$('#countdownOverlay');
+  if(!ov){ov=document.createElement('div');ov.id='countdownOverlay';ov.className='countdown-overlay';document.body.appendChild(ov);}
+  ov.style.display='flex';let n=sec;
+  const show=()=>{ov.innerHTML='<div class="countdown-num">'+(n>0?n:'GO!')+'</div>';};
+  show();
+  const id=setInterval(()=>{
+    n--;
+    if(n>0){show();}
+    else{clearInterval(id);ov.innerHTML='<div class="countdown-num">GO!</div>';setTimeout(()=>{ov.style.display='none';cb();},700);}
+  },1000);
+}
+$('#bigScreenBtn').addEventListener('click',()=>{
+  const el=document.querySelector('.card:not(.hidden)');if(!el)return;
+  if(el.requestFullscreen) el.requestFullscreen();
+  document.body.classList.add('bigscreen');
+  const tip=document.createElement('div');tip.className='bs-tip';tip.id='bsTip';tip.textContent='按 Esc 退出大屏';document.body.appendChild(tip);
+});
+document.addEventListener('fullscreenchange',()=>{
+  if(!document.fullscreenElement){
+    document.body.classList.remove('bigscreen');
+    const t=$('#bsTip');if(t)t.remove();
+  }
+});
 
 /* ============ 轮盘抽奖 ============ */
 const wheelCanvas=$('#wheel'), wctx=wheelCanvas.getContext('2d');
@@ -337,7 +415,7 @@ function pickWeightedIndex(){
   for(let i=0;i<wheelItems.length;i++){r-=Math.max(0.0001,wheelItems[i].weight);if(r<0)return i;}
   return wheelItems.length-1;
 }
-$('#spinBtn').addEventListener('click',()=>{
+function spinCore(){
   if(spinning||wheelItems.length===0)return;
   spinning=true;$('#spinBtn').disabled=true;$('#wheelHub').textContent='···';
   const idx=pickWeightedIndex();
@@ -368,6 +446,11 @@ $('#spinBtn').addEventListener('click',()=>{
     }
   }
   requestAnimationFrame(frame);
+}
+$('#spinBtn').addEventListener('click',()=>{
+  const cd=+$('#wheelCountdown').value||0;
+  if(cd>0){runCountdown(cd,spinCore);return;}
+  spinCore();
 });
 renderWheelItems();
 
@@ -384,7 +467,7 @@ renderHistory('wheelHistory',load('wheelHistory',[]));
 renderHistory('numHistory',load('numHistory',[]));
 renderHistory('nameHistory',load('nameHistory',[]));
 
-$('#numDraw').addEventListener('click',()=>{
+function numCore(){
   const min=+$('#numMin').value, max=+$('#numMax').value, count=Math.max(1,Math.floor(+$('#numCount').value)||1);
   const unique=$('#numUnique').checked, sort=$('#numSort').checked;
   if(isNaN(min)||isNaN(max)||min>max){alert('请检查最小值/最大值');return;}
@@ -418,6 +501,11 @@ $('#numDraw').addEventListener('click',()=>{
       pushHistory('numHistory',label);burstConfetti();
     }
   },60);
+}
+$('#numDraw').addEventListener('click',()=>{
+  const cd=+$('#numCountdown').value||0;
+  if(cd>0){runCountdown(cd,numCore);return;}
+  numCore();
 });
 $('#numReset').addEventListener('click',()=>{
   $('#numHistory').innerHTML='';save('numHistory',[]);$('#numBig').textContent='?';$('#numList').innerHTML='';
@@ -438,7 +526,7 @@ function restoreNames(){
   $('#nameList').value=names.join('\n');save('nameList',$('#nameList').value);
   removedNames=[];save('removedNames',removedNames);
 }
-$('#nameDraw').addEventListener('click',()=>{
+function nameCore(){
   let names=parseNames();
   const count=Math.max(1,Math.floor(+$('#nameCount').value)||1);
   const remove=$('#nameRemove').checked;
@@ -467,6 +555,11 @@ $('#nameDraw').addEventListener('click',()=>{
     },55);
   };
   pickOne();
+}
+$('#nameDraw').addEventListener('click',()=>{
+  const cd=+$('#nameCountdown').value||0;
+  if(cd>0){runCountdown(cd,nameCore);return;}
+  nameCore();
 });
 $('#nameReset').addEventListener('click',()=>{
   restoreNames();$('#nameWinners').innerHTML='';$('#nameWinner').textContent='等待抽取…';
