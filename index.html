@@ -98,14 +98,20 @@
   .bigscreen header.top p{display:none}
   .bigscreen .cfg-col{display:none}
   .bigscreen .history{display:none}
-  .bigscreen .card{border-radius:0;box-shadow:none;min-height:100vh;padding:5vh 5vw;display:flex;flex-direction:column;align-items:center;justify-content:center}
-  .bigscreen .wheel-stage{width:min(80vmin,90vw)}
-  .bigscreen #wheelResult{font-size:6vmin;margin-top:2vh}
-  .bigscreen .big-number{font-size:20vmin;line-height:1}
-  .bigscreen .winner{font-size:10vmin}
-  .bigscreen .winner-pill{font-size:4vmin;padding:2vh 4vw}
-  .bigscreen .num-pill{font-size:4vmin;padding:2vh 3vw}
-  .bs-tip{position:fixed;bottom:14px;right:18px;color:#fff;opacity:.8;font-size:13px;z-index:9998}
+  .bigscreen .card{border-radius:0;box-shadow:none;min-height:100vh;padding:9vh 5vw;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#4b0fa3,#1b4fd8)}
+  .bigscreen .wheel-stage{width:min(92vmin,94vw)}
+  .bigscreen #wheelResult{font-size:7vmin;margin-top:3vh;color:#fff;text-shadow:0 4px 24px rgba(0,0,0,.35)}
+  .bigscreen .big-number{font-size:26vmin;line-height:1;color:#fff;text-shadow:0 6px 30px rgba(0,0,0,.4)}
+  .bigscreen .winner{font-size:12vmin;color:#fff;text-shadow:0 4px 24px rgba(0,0,0,.35)}
+  .bigscreen .winner-pill{font-size:4.5vmin;padding:2.4vh 4.5vw;color:#fff;background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.35)}
+  .bigscreen .num-pill{font-size:4.5vmin;padding:2.4vh 3.5vw}
+  .bs-bar,.bs-foot{display:none}
+  .bigscreen .bs-bar{display:flex;position:fixed;top:0;left:0;right:0;align-items:center;justify-content:space-between;padding:2.2vh 3vw;z-index:9998}
+  .bs-title{font-size:3.2vmin;font-weight:800;color:#fff;letter-spacing:1px;text-shadow:0 2px 12px rgba(0,0,0,.3)}
+  .bs-exit{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.45);border-radius:999px;padding:1.4vh 2.4vw;font-size:2.4vmin;font-weight:700;cursor:pointer;font-family:inherit}
+  .bs-exit:hover{background:rgba(255,255,255,.34)}
+  .bigscreen .bs-foot{display:flex;position:fixed;left:0;right:0;bottom:0;gap:1.4vw;justify-content:center;flex-wrap:wrap;padding:2vh 3vw;z-index:9998}
+  .bs-pill{background:rgba(255,255,255,.16);color:#fff;padding:1.4vh 2.4vw;border-radius:999px;font-size:2.6vmin;font-weight:700;backdrop-filter:blur(4px)}
 </style>
 </head>
 <body>
@@ -227,6 +233,9 @@
     <div class="actions" style="justify-content:center;margin-top:8px"><button class="btn ghost small" id="exportAll">⬇ 导出全部记录</button></div>
   </footer>
 </div>
+
+<div class="bs-bar" id="bsBar"><span class="bs-title" id="bsTitle">🎉 幸运抽奖</span><button class="bs-exit" id="bsExit">✕ 退出大屏</button></div>
+<div class="bs-foot" id="bsFoot"></div>
 
 <script>
 "use strict";
@@ -378,18 +387,30 @@ function runCountdown(sec,cb){
     else{clearInterval(id);ov.innerHTML='<div class="countdown-num">GO!</div>';setTimeout(()=>{ov.style.display='none';cb();},700);}
   },1000);
 }
+function fillBsFoot(mode){
+  const hist=load(mode+'History',[]).slice(0,8);
+  const foot=$('#bsFoot');foot.innerHTML='';
+  hist.forEach(v=>{const p=document.createElement('span');p.className='bs-pill';p.textContent=v;foot.appendChild(p);});
+}
 $('#bigScreenBtn').addEventListener('click',()=>{
   const el=document.querySelector('.card:not(.hidden)');if(!el)return;
   if(el.requestFullscreen) el.requestFullscreen();
   document.body.classList.add('bigscreen');
-  const tip=document.createElement('div');tip.className='bs-tip';tip.id='bsTip';tip.textContent='按 Esc 退出大屏';document.body.appendChild(tip);
+  const mode = el.id==='tab-wheel'?'wheel':el.id==='tab-number'?'num':'name';
+  const label = mode==='wheel'?'轮盘抽奖':mode==='num'?'数字抽奖':'名单抽奖';
+  $('#bsTitle').textContent='🎉 幸运抽奖 · '+label;
+  fillBsFoot(mode);
 });
+$('#bsExit').addEventListener('click',()=>{ if(document.exitFullscreen) document.exitFullscreen(); });
 document.addEventListener('fullscreenchange',()=>{
   if(!document.fullscreenElement){
     document.body.classList.remove('bigscreen');
-    const t=$('#bsTip');if(t)t.remove();
+    $('#bsFoot').innerHTML='';
   }
 });
+// 抽中后实时刷新大屏底部中奖列表
+const _pushHistory=pushHistory;
+pushHistory=function(id,val){ _pushHistory(id,val); if(document.body.classList.contains('bigscreen')){ fillBsFoot(id.replace('History','')); } };
 
 /* ============ 轮盘抽奖 ============ */
 const wheelCanvas=$('#wheel'), wctx=wheelCanvas.getContext('2d');
