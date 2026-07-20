@@ -134,7 +134,8 @@
         </div>
         <div class="result" id="wheelResult">点击开始抽奖</div>
         <div class="actions">
-          <button class="btn" id="spinBtn">开始抽奖</button>
+          <button class="btn" id="spinBtn">开始</button>
+          <button class="btn" id="revealBtn" disabled>揭晓</button>
           <button class="btn ghost" id="wheelReset">重置轮盘</button>
           <span class="toggle">倒计时<input type="number" id="wheelCountdown" class="cd-input" value="0" min="0"></span>
         </div>
@@ -154,7 +155,7 @@
     <div class="history">
       <h3>中奖记录</h3>
       <div class="chips" id="wheelHistory"></div>
-      <div class="actions"><button class="btn ghost small" id="wheelExport">⬇ 导出 Excel/CSV</button></div>
+      <div class="actions"><button class="btn ghost small" id="wheelExport">⬇ 导出 Excel(.xlsx)</button></div>
     </div>
   </section>
 
@@ -188,7 +189,7 @@
     <div class="history">
       <h3>抽取记录</h3>
       <div class="chips" id="numHistory"></div>
-      <div class="actions"><button class="btn ghost small" id="numExport">⬇ 导出 Excel/CSV</button></div>
+      <div class="actions"><button class="btn ghost small" id="numExport">⬇ 导出 Excel(.xlsx)</button></div>
     </div>
   </section>
 
@@ -217,7 +218,7 @@
     <div class="history">
       <h3>中奖记录</h3>
       <div class="chips" id="nameHistory"></div>
-      <div class="actions"><button class="btn ghost small" id="nameExport">⬇ 导出 Excel/CSV</button></div>
+      <div class="actions"><button class="btn ghost small" id="nameExport">⬇ 导出 Excel(.xlsx)</button></div>
     </div>
   </section>
 
@@ -294,23 +295,76 @@ function downloadBlob(blob,name){
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href),1500);
 }
-function exportCSV(rows,header,filename){
-  const esc=s=>'"'+String(s).replace(/"/g,'""')+'"';
-  let csv=header+'\r\n';
-  rows.forEach((r,i)=>{csv+=(i+1)+','+esc(r)+'\r\n';});
-  downloadBlob(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}),filename);
+/* 纯 JS 生成真正的 .xlsx（OOXML + 存储型 ZIP，零依赖） */
+function colLetter(c){let s='';c++;while(c>0){s=String.fromCharCode(65+((c-1)%26))+s;c=Math.floor((c-1)/26);}return s;}
+function escapeXml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
+function crc32(buf){
+  let c,t=(crc32._t)||(crc32._t=(function(){const ta=[];for(let n=0;n<256;n++){c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);ta[n]=c>>>0;}return ta;})());
+  let crc=0xFFFFFFFF;
+  for(let i=0;i<buf.length;i++)crc=(t[(crc^buf[i])&0xFF]^(crc>>>8))>>>0;
+  return (crc^0xFFFFFFFF)>>>0;
 }
-$('#wheelExport').addEventListener('click',()=>exportCSV(load('wheelHistory',[]),'序号,奖项','轮盘抽奖记录.csv'));
-$('#numExport').addEventListener('click',()=>exportCSV(load('numHistory',[]),'序号,数字','数字抽奖记录.csv'));
-$('#nameExport').addEventListener('click',()=>exportCSV(load('nameHistory',[]),'序号,姓名','名单抽奖记录.csv'));
+function zipStore(files){
+  const enc=new TextEncoder();const parts=[],central=[];let offset=0;
+  for(const f of files){
+    const name=enc.encode(f.name),data=f.data,crc=crc32(data);
+    const lh=new Uint8Array(30+name.length+data.length);const lv=new DataView(lh.buffer);
+    lv.setUint32(0,0x04034b50,true);lv.setUint16(4,20,true);lv.setUint16(6,0x0800,true);lv.setUint16(8,0,true);
+    lv.setUint16(10,0,true);lv.setUint16(12,0,true);lv.setUint32(14,crc,true);lv.setUint32(18,data.length,true);
+    lv.setUint32(22,data.length,true);lv.setUint16(26,name.length,true);lv.setUint16(28,0,true);
+    lh.set(name,30);lh.set(data,30+name.length);parts.push(lh);
+    const cd=new Uint8Array(46+name.length);const cv=new DataView(cd.buffer);
+    cv.setUint32(0,0x02014b50,true);cv.setUint16(4,20,true);cv.setUint16(6,20,true);cv.setUint16(8,0x0800,true);
+    cv.setUint16(10,0,true);cv.setUint16(12,0,true);cv.setUint16(14,0,true);cv.setUint32(16,crc,true);
+    cv.setUint32(20,data.length,true);cv.setUint32(24,data.length,true);cv.setUint16(28,name.length,true);
+    cv.setUint16(30,0,true);cv.setUint16(32,0,true);cv.setUint16(34,0,true);cv.setUint16(36,0,true);
+    cv.setUint32(38,0,true);cv.setUint32(42,offset,true);cd.set(name,46);central.push(cd);
+    offset+=lh.length;
+  }
+  let cenSize=0;central.forEach(c=>cenSize+=c.length);
+  const tail=new Uint8Array(22);const tv=new DataView(tail.buffer);
+  tv.setUint32(0,0x06054b50,true);tv.setUint16(4,0,true);tv.setUint16(6,0,true);
+  tv.setUint16(8,files.length,true);tv.setUint16(10,files.length,true);tv.setUint32(12,cenSize,true);
+  tv.setUint32(16,offset,true);tv.setUint16(20,0,true);
+  const all=[...parts,...central,tail];let total=0;all.forEach(p=>total+=p.length);
+  const out=new Uint8Array(total);let pos=0;all.forEach(p=>{out.set(p,pos);pos+=p.length;});
+  return out;
+}
+function sheetXml(rows){
+  const cols=rows.length?rows[0].length:0;
+  const dim='A1:'+(rows.length?(colLetter(cols-1)+rows.length):'A1');
+  let body='';
+  rows.forEach((row,r)=>{
+    let cells='';
+    row.forEach((val,c)=>{
+      const ref=colLetter(c)+(r+1);
+      if(typeof val==='number'&&isFinite(val)) cells+=`<c r="${ref}" t="n"><v>${val}</v></c>`;
+      else cells+=`<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(val==null?'':val)}</t></is></c>`;
+    });
+    body+=`<row r="${r+1}">${cells}</row>`;
+  });
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="${dim}"/><sheetData>${body}</sheetData></worksheet>`;
+}
+function exportXlsx(rows,sheetName,filename){
+  const enc=new TextEncoder();
+  const files=[
+    {name:'[Content_Types].xml',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>')},
+    {name:'_rels/.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')},
+    {name:'xl/workbook.xml',data:enc.encode(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${escapeXml(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`)},
+    {name:'xl/_rels/workbook.xml.rels',data:enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>')},
+    {name:'xl/worksheets/sheet1.xml',data:enc.encode(sheetXml(rows))}
+  ];
+  downloadBlob(new Blob([zipStore(files)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),filename);
+}
+$('#wheelExport').addEventListener('click',()=>exportXlsx([['序号','奖项'],...load('wheelHistory',[]).map((r,i)=>[i+1,r])],'轮盘抽奖','轮盘抽奖记录.xlsx'));
+$('#numExport').addEventListener('click',()=>exportXlsx([['序号','数字'],...load('numHistory',[]).map((r,i)=>[i+1,r])],'数字抽奖','数字抽奖记录.xlsx'));
+$('#nameExport').addEventListener('click',()=>exportXlsx([['序号','姓名'],...load('nameHistory',[]).map((r,i)=>[i+1,r])],'名单抽奖','名单抽奖记录.xlsx'));
 $('#exportAll').addEventListener('click',()=>{
-  const all=[];
-  load('wheelHistory',[]).forEach(r=>all.push(['轮盘',r]));
-  load('numHistory',[]).forEach(r=>all.push(['数字',r]));
-  load('nameHistory',[]).forEach(r=>all.push(['名单',r]));
-  const esc=s=>'"'+String(s).replace(/"/g,'""')+'"';
-  let csv='类型,结果\r\n';all.forEach(([t,r])=>csv+=esc(t)+','+esc(r)+'\r\n');
-  downloadBlob(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'}),'全部抽奖记录.csv');
+  const rows=[['类型','结果']];
+  load('wheelHistory',[]).forEach(r=>rows.push(['轮盘',r]));
+  load('numHistory',[]).forEach(r=>rows.push(['数字',r]));
+  load('nameHistory',[]).forEach(r=>rows.push(['名单',r]));
+  exportXlsx(rows,'全部记录','全部抽奖记录.xlsx');
 });
 function runCountdown(sec,cb){
   let ov=$('#countdownOverlay');
@@ -344,24 +398,27 @@ let wheelItems = load('wheelItems',[
   {text:'一等奖',weight:1},{text:'二等奖',weight:2},{text:'三等奖',weight:3},
   {text:'幸运奖',weight:6},{text:'谢谢参与',weight:8}
 ]);
-let currentRotation = 0, spinning=false;
+let currentRotation = 0, wheelState='idle', pendingWinner=0, pendingCenter=0, pendingSeg=0, spinSpeed=0, spinRAF=0;
 
 function colorFor(i){return PALETTE[i%PALETTE.length];}
 
 function drawWheel(rotation){
   wctx.clearRect(0,0,W,W);
+  wctx.save();
+  wctx.translate(cx,cy);
+  wctx.rotate(rotation);
   const totalW=wheelItems.reduce((s,it)=>s+Math.max(0.0001,it.weight),0);
   let acc=0;
   wheelItems.forEach((it,i)=>{
     const start=acc/totalW*Math.PI*2;
     acc+=Math.max(0.0001,it.weight);
     const end=acc/totalW*Math.PI*2;
-    wctx.beginPath();wctx.moveTo(cx,cy);wctx.arc(cx,cy,R,start,end);wctx.closePath();
+    wctx.beginPath();wctx.moveTo(0,0);wctx.arc(0,0,R,start,end);wctx.closePath();
     wctx.fillStyle=colorFor(i);wctx.fill();
     wctx.strokeStyle='rgba(255,255,255,.85)';wctx.lineWidth=2;wctx.stroke();
     // 文字（沿切线，左侧翻转）
     const mid=(start+end)/2;
-    wctx.save();wctx.translate(cx,cy);wctx.rotate(mid);
+    wctx.save();wctx.rotate(mid);
     let flip=Math.cos(mid)<0;
     wctx.rotate(Math.PI/2); if(flip) wctx.rotate(Math.PI);
     wctx.fillStyle='#fff';wctx.font='bold 15px sans-serif';wctx.textAlign='center';wctx.textBaseline='middle';
@@ -370,7 +427,8 @@ function drawWheel(rotation){
     wctx.restore();
   });
   // 外圈
-  wctx.beginPath();wctx.arc(cx,cy,R,0,Math.PI*2);wctx.lineWidth=4;wctx.strokeStyle='#fff';wctx.stroke();
+  wctx.beginPath();wctx.arc(0,0,R,0,Math.PI*2);wctx.lineWidth=4;wctx.strokeStyle='#fff';wctx.stroke();
+  wctx.restore();
 }
 function renderWheelItems(){
   const box=$('#wheelItems');box.innerHTML='';
@@ -415,19 +473,33 @@ function pickWeightedIndex(){
   for(let i=0;i<wheelItems.length;i++){r-=Math.max(0.0001,wheelItems[i].weight);if(r<0)return i;}
   return wheelItems.length-1;
 }
-function spinCore(){
-  if(spinning||wheelItems.length===0)return;
-  spinning=true;$('#spinBtn').disabled=true;$('#wheelHub').textContent='···';
-  const idx=pickWeightedIndex();
+function startSpin(){
+  if(wheelState!=='idle'||wheelItems.length===0)return;
+  pendingWinner=pickWeightedIndex();
   const totalW=wheelItems.reduce((s,it)=>s+Math.max(0.0001,it.weight),0);
-  let acc=0;for(let i=0;i<idx;i++)acc+=Math.max(0.0001,wheelItems[i].weight);
-  const center=(acc+Math.max(0.0001,wheelItems[idx].weight)/2)/totalW*Math.PI*2;
-  const seg=Math.max(0.0001,wheelItems[idx].weight)/totalW*Math.PI*2;
-  const r0=mod(POINTER-center,Math.PI*2);
+  let acc=0;for(let i=0;i<pendingWinner;i++)acc+=Math.max(0.0001,wheelItems[i].weight);
+  pendingCenter=(acc+Math.max(0.0001,wheelItems[pendingWinner].weight)/2)/totalW*Math.PI*2;
+  pendingSeg=Math.max(0.0001,wheelItems[pendingWinner].weight)/totalW*Math.PI*2;
+  wheelState='spinning';
+  $('#spinBtn').disabled=true;$('#revealBtn').disabled=false;$('#wheelHub').textContent='···';
+  spinSpeed=0.12;spinRAF=requestAnimationFrame(spinTick);
+}
+function spinTick(){
+  spinSpeed=Math.min(spinSpeed+0.004,0.32);
+  currentRotation+=spinSpeed;
+  drawWheel(currentRotation);
+  if(wheelState==='spinning') spinRAF=requestAnimationFrame(spinTick);
+}
+function revealSpin(){
+  if(wheelState!=='spinning')return;
+  wheelState='revealing';$('#revealBtn').disabled=true;
+  cancelAnimationFrame(spinRAF);
+  const r0=mod(POINTER-pendingCenter,Math.PI*2);
   const turns=5;
-  const remaining=mod(r0-currentRotation,Math.PI*2)+rand(-seg*0.32,seg*0.32);
-  const finalRotation=currentRotation+turns*Math.PI*2+remaining;
-  const start=currentRotation, dur=4200, t0=performance.now();
+  const start=currentRotation;
+  const remaining=mod(r0-start,Math.PI*2)+rand(-pendingSeg*0.32,pendingSeg*0.32);
+  const finalRotation=start+turns*Math.PI*2+remaining;
+  const t0=performance.now(), dur=3200;
   const soundOn=$('#wheelSound').checked;
   function frame(now){
     const p=Math.min((now-t0)/dur,1);
@@ -438,8 +510,9 @@ function spinCore(){
     if(p<1) requestAnimationFrame(frame);
     else{
       currentRotation=mod(finalRotation,Math.PI*2);
-      spinning=false;$('#spinBtn').disabled=false;$('#wheelHub').textContent='GO';
-      const winner=wheelItems[idx].text;
+      wheelState='idle';
+      $('#spinBtn').disabled=false;$('#wheelHub').textContent='GO';
+      const winner=wheelItems[pendingWinner].text;
       $('#wheelResult').textContent='🎊 恭喜：'+winner;
       pushHistory('wheelHistory',winner);
       burstConfetti();if(soundOn) beep(990,.18,'sine',.08);
@@ -449,9 +522,10 @@ function spinCore(){
 }
 $('#spinBtn').addEventListener('click',()=>{
   const cd=+$('#wheelCountdown').value||0;
-  if(cd>0){runCountdown(cd,spinCore);return;}
-  spinCore();
+  if(cd>0){runCountdown(cd,startSpin);return;}
+  startSpin();
 });
+$('#revealBtn').addEventListener('click',revealSpin);
 renderWheelItems();
 
 /* ============ 数字抽奖 ============ */
