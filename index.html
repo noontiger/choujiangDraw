@@ -112,6 +112,8 @@
   .bs-exit:hover{background:rgba(255,255,255,.34)}
   .bigscreen .bs-foot{display:flex;position:fixed;left:0;right:0;bottom:0;gap:1.4vw;justify-content:center;flex-wrap:wrap;padding:2vh 3vw;z-index:9998}
   .bs-pill{background:rgba(255,255,255,.16);color:#fff;padding:1.4vh 2.4vw;border-radius:999px;font-size:2.6vmin;font-weight:700;backdrop-filter:blur(4px)}
+  .bigscreen .actions{margin-top:4vh}
+  .bigscreen .actions .btn{font-size:3vmin;padding:1.8vh 3.6vw;border-radius:14px}
 </style>
 </head>
 <body>
@@ -182,14 +184,17 @@
           <input type="checkbox" id="numSort" checked> 结果排序
         </label>
         <div class="actions">
-          <button class="btn" id="numDraw">开始抽取</button>
           <button class="btn ghost" id="numReset">清空记录</button>
-          <span class="toggle">倒计时<input type="number" id="numCountdown" class="cd-input" value="0" min="0"></span>
         </div>
       </div>
       <div class="col" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
         <div class="big-number" id="numBig">?</div>
         <div class="num-list" id="numList"></div>
+        <div class="actions">
+          <button class="btn" id="numDraw">开始</button>
+          <button class="btn" id="numReveal" disabled>揭晓</button>
+          <span class="toggle">倒计时<input type="number" id="numCountdown" class="cd-input" value="0" min="0"></span>
+        </div>
       </div>
     </div>
     <div class="history">
@@ -211,14 +216,17 @@
           <input type="checkbox" id="nameRemove" checked> 抽中后移出名单（不重复）
         </label>
         <div class="actions">
-          <button class="btn" id="nameDraw">开始抽取</button>
           <button class="btn ghost" id="nameReset">重置名单</button>
-          <span class="toggle">倒计时<input type="number" id="nameCountdown" class="cd-input" value="0" min="0"></span>
         </div>
       </div>
       <div class="col" style="display:flex;flex-direction:column;align-items:center;justify-content:center">
         <div class="winner" id="nameWinner">等待抽取…</div>
         <div class="winners" id="nameWinners"></div>
+        <div class="actions">
+          <button class="btn" id="nameDraw">开始</button>
+          <button class="btn" id="nameReveal" disabled>揭晓</button>
+          <span class="toggle">倒计时<input type="number" id="nameCountdown" class="cd-input" value="0" min="0"></span>
+        </div>
       </div>
     </div>
     <div class="history">
@@ -562,7 +570,9 @@ renderHistory('wheelHistory',load('wheelHistory',[]));
 renderHistory('numHistory',load('numHistory',[]));
 renderHistory('nameHistory',load('nameHistory',[]));
 
-function numCore(){
+let numState='idle', numResult=[], numIV=0;
+function startNum(){
+  if(numState!=='idle')return;
   const min=+$('#numMin').value, max=+$('#numMax').value, count=Math.max(1,Math.floor(+$('#numCount').value)||1);
   const unique=$('#numUnique').checked, sort=$('#numSort').checked;
   if(isNaN(min)||isNaN(max)||min>max){alert('请检查最小值/最大值');return;}
@@ -573,35 +583,36 @@ function numCore(){
   if(unique){for(let i=0;i<count;i++){const k=Math.floor(Math.random()*pool.length);result.push(pool.splice(k,1)[0]);}}
   else{for(let i=0;i<count;i++)result.push(Math.floor(rand(min,max+1)));}
   if(sort) result.sort((a,b)=>a-b);
-  // 动画
+  numResult=result;
+  numState='spinning';
+  $('#numDraw').disabled=true; $('#numReveal').disabled=false;
   const big=$('#numBig'), list=$('#numList');list.innerHTML='';
-  let ticks=0;const maxTicks=24;
-  const iv=setInterval(()=>{
-    ticks++;
+  clearInterval(numIV);
+  numIV=setInterval(()=>{
     if(count===1){big.textContent=Math.floor(rand(min,max+1));}
     else{
-      big.textContent='…';
-      list.innerHTML='';
+      big.textContent='…';list.innerHTML='';
       for(let i=0;i<count;i++){const d=document.createElement('span');d.className='num-pill';d.textContent=Math.floor(rand(min,max+1));list.appendChild(d);}
-    }
-    if(ticks>=maxTicks){
-      clearInterval(iv);
-      if(count===1){big.textContent=result[0];}
-      else{
-        big.textContent='结果';
-        list.innerHTML='';
-        result.forEach(n=>{const d=document.createElement('span');d.className='num-pill';d.textContent=n;list.appendChild(d);});
-      }
-      const label=result.join('、');
-      pushHistory('numHistory',label);burstConfetti();
     }
   },60);
 }
+function revealNum(){
+  if(numState!=='spinning')return;
+  clearInterval(numIV);
+  const count=numResult.length, big=$('#numBig'), list=$('#numList');list.innerHTML='';
+  if(count===1){big.textContent=numResult[0];}
+  else{big.textContent='结果';numResult.forEach(n=>{const d=document.createElement('span');d.className='num-pill';d.textContent=n;list.appendChild(d);});}
+  pushHistory('numHistory',numResult.join('、'));burstConfetti();
+  if($('#wheelSound').checked) beep(880,.18,'sine',.08);
+  numState='idle';
+  $('#numDraw').disabled=false; $('#numReveal').disabled=true;
+}
 $('#numDraw').addEventListener('click',()=>{
   const cd=+$('#numCountdown').value||0;
-  if(cd>0){runCountdown(cd,numCore);return;}
-  numCore();
+  if(cd>0){runCountdown(cd,startNum);return;}
+  startNum();
 });
+$('#numReveal').addEventListener('click',revealNum);
 $('#numReset').addEventListener('click',()=>{
   $('#numHistory').innerHTML='';save('numHistory',[]);$('#numBig').textContent='?';$('#numList').innerHTML='';
 });
@@ -621,41 +632,46 @@ function restoreNames(){
   $('#nameList').value=names.join('\n');save('nameList',$('#nameList').value);
   removedNames=[];save('removedNames',removedNames);
 }
-function nameCore(){
+let nameState='idle', nameResult=[], nameIV=0;
+function startName(){
+  if(nameState!=='idle')return;
   let names=parseNames();
   const count=Math.max(1,Math.floor(+$('#nameCount').value)||1);
-  const remove=$('#nameRemove').checked;
   if(names.length===0){alert('请先输入参与名单');return;}
   if(count>names.length){alert('抽取人数不能超过名单数量 ('+names.length+')');return;}
-  const winners=[];
+  // 预抽取中奖者（洗牌取前 count 个）
+  let pool=names.slice();let winners=[];
+  for(let i=0;i<count;i++){const k=Math.floor(Math.random()*pool.length);winners.push(pool.splice(k,1)[0]);}
+  nameResult=winners;
+  nameState='spinning';
+  $('#nameDraw').disabled=true; $('#nameReveal').disabled=false;
+  const winBox=$('#nameWinners');winBox.innerHTML='';$('#nameWinner').textContent='滚动中…';
+  clearInterval(nameIV);
+  nameIV=setInterval(()=>{ $('#nameWinner').textContent=names[Math.floor(Math.random()*names.length)]||'…'; },55);
+}
+function revealName(){
+  if(nameState!=='spinning')return;
+  clearInterval(nameIV);
+  const remove=$('#nameRemove').checked;
+  let names=parseNames();
   const winBox=$('#nameWinners');winBox.innerHTML='';
-  let i=0;
-  const pickOne=()=>{
-    const k=Math.floor(Math.random()*names.length);
-    const w=names.splice(k,1)[0];
-    winners.push(w);
-    // 滚动动画
-    let t=0;const iv=setInterval(()=>{
-      t++;
-      $('#nameWinner').textContent=names.length?names[Math.floor(Math.random()*names.length)]||w:w;
-      if(t>=18){
-        clearInterval(iv);
-        $('#nameWinner').textContent='🎉 '+w;
-        const p=document.createElement('div');p.className='winner-pill';p.textContent=w;winBox.prepend(p);
-        if(remove){removedNames.push(w);save('removedNames',removedNames);$('#nameList').value=names.join('\n');save('nameList',$('#nameList').value);}
-        pushHistory('nameHistory',w);
-        burstConfetti();
-        if(i<count-1){i++;setTimeout(pickOne,350);}
-      }
-    },55);
-  };
-  pickOne();
+  nameResult.forEach(w=>{
+    const p=document.createElement('div');p.className='winner-pill';p.textContent=w;winBox.prepend(p);
+    pushHistory('nameHistory',w);
+    if(remove){const idx=names.indexOf(w);if(idx>=0)names.splice(idx,1);}
+  });
+  if(remove){removedNames=removedNames.concat(nameResult);save('removedNames',removedNames);$('#nameList').value=names.join('\n');save('nameList',$('#nameList').value);}
+  $('#nameWinner').textContent='🎉 '+nameResult.join('、');
+  burstConfetti();if($('#wheelSound').checked) beep(990,.18,'sine',.08);
+  nameState='idle';
+  $('#nameDraw').disabled=false; $('#nameReveal').disabled=true;
 }
 $('#nameDraw').addEventListener('click',()=>{
   const cd=+$('#nameCountdown').value||0;
-  if(cd>0){runCountdown(cd,nameCore);return;}
-  nameCore();
+  if(cd>0){runCountdown(cd,startName);return;}
+  startName();
 });
+$('#nameReveal').addEventListener('click',revealName);
 $('#nameReset').addEventListener('click',()=>{
   restoreNames();$('#nameWinners').innerHTML='';$('#nameWinner').textContent='等待抽取…';
   $('#nameHistory').innerHTML='';save('nameHistory',[]);
